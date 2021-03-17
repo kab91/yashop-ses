@@ -1,217 +1,222 @@
 <?php
 /**
-* SimpleEmailServiceRequest PHP class
-*
-* @link https://github.com/daniel-zahariev/php-aws-ses
-* @version 0.8.3
-* @package AmazonSimpleEmailService
-*/
+ * SimpleEmailServiceRequest PHP class
+ *
+ * @link https://github.com/daniel-zahariev/php-aws-ses
+ * @version 0.8.3
+ * @package AmazonSimpleEmailService
+ */
 
 namespace yashop\ses\libs;
 
 final class SimpleEmailServiceRequest
 {
-	private $ses, $verb, $parameters = array();
-	public $response;
-	public static $curlOptions = array();
+    const SERVICE = 'email';
+    const ALGORITHM = 'AWS4-HMAC-SHA256';
 
-	/**
-	* Constructor
-	*
-	* @param string $ses The SimpleEmailService object making this request
-	* @param string $action action
-	* @param string $verb HTTP verb
-	* @param array $curl_options Additional cURL options
-	* @return mixed
-	*/
-	function __construct($ses, $verb) {
-		$this->ses = $ses;
-		$this->verb = $verb;
-		$this->response = new \stdClass();
-		$this->response->error = false;
+    private $ses, $verb, $parameters = array();
+    public $response;
+    public static $curlOptions = array();
+
+    /**
+     * Constructor
+     *
+     * @param string $ses The SimpleEmailService object making this request
+     * @param string $action action
+     * @param string $verb HTTP verb
+     * @param array $curl_options Additional cURL options
+     * @return mixed
+     */
+    function __construct($ses, $verb)
+    {
+        $this->ses = $ses;
+        $this->verb = $verb;
+        $this->response = new \stdClass();
+        $this->response->error = false;
         $this->response->body = '';
-	}
+    }
 
-	/**
-	* Set request parameter
-	*
-	* @param string  $key Key
-	* @param string  $value Value
-	* @param boolean $replace Whether to replace the key if it already exists (default true)
-	* @return void
-	*/
-	public function setParameter($key, $value, $replace = true) {
-		if(!$replace && isset($this->parameters[$key]))
-		{
-			$temp = (array)($this->parameters[$key]);
-			$temp[] = $value;
-			$this->parameters[$key] = $temp;
-		}
-		else
-		{
-			$this->parameters[$key] = $value;
-		}
-	}
+    /**
+     * Set request parameter
+     *
+     * @param string $key Key
+     * @param string $value Value
+     * @param boolean $replace Whether to replace the key if it already exists (default true)
+     * @return void
+     */
+    public function setParameter($key, $value, $replace = true)
+    {
+        if (!$replace && isset($this->parameters[$key])) {
+            $temp = (array)($this->parameters[$key]);
+            $temp[] = $value;
+            $this->parameters[$key] = $temp;
+        } else {
+            $this->parameters[$key] = $value;
+        }
+    }
 
-	/**
-	* Get the response
-	*
-	* @return object | false
-	*/
-	public function getResponse() {
+    /**
+     * Get the response
+     *
+     * @return object | false
+     */
+    public function getResponse()
+    {
+        $headers = array();
 
-		$params = array();
-		foreach ($this->parameters as $var => $value)
-		{
-			if(is_array($value))
-			{
-				foreach($value as $v)
-				{
-					$params[] = $var.'='.$this->__customUrlEncode($v);
-				}
-			}
-			else
-			{
-				$params[] = $var.'='.$this->__customUrlEncode($value);
-			}
-		}
+        $params = $this->parameters;
+        ksort($params);
 
-		sort($params, SORT_STRING);
+        $date = gmdate('Ymd');
+        $amzDate = gmdate('Ymd\THis\Z');
+        $canonicalURI = '/';
+        $queryParameters = '';
+        $canonicalHeaders = '';
+        $signedHeaders = '';
+        $queryParams = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
 
-		// must be in format 'Sun, 06 Nov 1994 08:49:37 GMT'
-		$date = gmdate('D, d M Y H:i:s e');
+        $headers[] = 'Host: ' . $this->ses->getHost();
+        if (in_array($this->parameters['Action'], ['SendRawEmail', 'SendEmail'])) {
+            $canonicalHeaders .= 'content-type:' . 'application/x-www-form-urlencoded' . "\n";
+            $signedHeaders .= 'content-type;';
+            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+        } else {
+            $query_parameters = $queryParams;
+        }
 
-		$query = implode('&', $params);
+        $canonicalHeaders .= 'host:' . $this->ses->getHost() . "\n" . 'x-amz-date:' . $amzDate . "\n";
+        $signedHeaders .= 'host;x-amz-date';
+        $payloadHash = hash('sha256', $queryParams);
 
-		$headers = array();
-		$headers[] = 'Date: '.$date;
-		$headers[] = 'Host: '.$this->ses->getHost();
+        // task1
+        $canonical_request =
+            $this->verb . "\n" .
+            $canonicalURI . "\n" .
+            $queryParameters . "\n" .
+            $canonicalHeaders . "\n" .
+            $signedHeaders . "\n" .
+            $payloadHash;
 
-		$auth = 'AWS3-HTTPS AWSAccessKeyId='.$this->ses->getAccessKey();
-		$auth .= ',Algorithm=HmacSHA256,Signature='.$this->__getSignature($date);
-		$headers[] = 'X-Amzn-Authorization: '.$auth;
+        // task2
+        $credential_scope = $date . '/' . $this->ses->getRegion() . '/' . self::SERVICE . '/aws4_request';
+        $string_to_sign =
+            self::ALGORITHM . "\n" .
+            $amzDate . "\n" .
+            $credential_scope . "\n" .
+            hash('sha256', $canonical_request);
 
-		$url = 'https://'.$this->ses->getHost().'/';
+        // task3
+        $signingKey = $this->_generateSignature($date, $this->ses->getRegion(), $this->ses->getSecretKey());
+        $signature = hash_hmac('sha256', $string_to_sign, $signingKey);
+        $headers[] = 'Authorization: ' . self::ALGORITHM . ' Credential=' . $this->ses->getAccessKey() . '/' . $credential_scope . ', SignedHeaders=' . $signedHeaders . ', Signature=' . $signature;
+        $headers[] = 'x-amz-date: ' . $amzDate;
 
-		// Basic setup
-		$curl = $this->ses->getCurl();
+        $url = 'https://' . $this->ses->getHost() . '/';
 
-		if ($curl === true) {
-			$curl = curl_init();
-			curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-			$this->ses->setCurl($curl);
-		}
+        // Basic setup
+        $curl = $this->ses->getCurl();
 
-		if (!$curl) {
-			$curl = curl_init();
-		}
+        if ($curl === true) {
+            $curl = curl_init();
+            curl_setopt($curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+            $this->ses->setCurl($curl);
+        }
 
-		curl_setopt($curl, CURLOPT_USERAGENT, 'SimpleEmailService/php');
+        if (!$curl) {
+            $curl = curl_init();
+        }
 
-		curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, ($this->ses->verifyHost() ? 2 : 0));
-		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, ($this->ses->verifyPeer() ? 1 : 0));
+        curl_setopt($curl, CURLOPT_USERAGENT, 'SimpleEmailService/php');
 
-		// Request types
-		switch ($this->verb) {
-			case 'GET':
-				$url .= '?'.$query;
-				break;
-			case 'POST':
-				curl_setopt($curl, CURLOPT_CUSTOMREQUEST, $this->verb);
-				curl_setopt($curl, CURLOPT_POSTFIELDS, $query);
-				$headers[] = 'Content-Type: application/x-www-form-urlencoded';
-			break;
-			case 'DELETE':
-				$url .= '?'.$query;
-				curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'DELETE');
-			break;
-			default: break;
-		}
-		curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
-		curl_setopt($curl, CURLOPT_HEADER, false);
+        curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, ($this->ses->verifyHost() ? 2 : 0));
+        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, ($this->ses->verifyPeer() ? 1 : 0));
 
-		curl_setopt($curl, CURLOPT_URL, $url);
-		curl_setopt($curl, CURLOPT_RETURNTRANSFER, false);
-		curl_setopt($curl, CURLOPT_WRITEFUNCTION, array(&$this, '__responseWriteCallback'));
-		curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
+        // Request types
+        switch ($this->verb) {
+            case 'GET':
+                $url .= '?' . $queryParams;
+                break;
+            case 'POST':
+                curl_setopt($curl, CURLOPT_CUSTOMREQUEST, $this->verb);
+                curl_setopt($curl, CURLOPT_POSTFIELDS, $queryParams);
+                break;
+            case 'DELETE':
+                $url .= '?' . $queryParams;
+                curl_setopt($curl, CURLOPT_CUSTOMREQUEST, 'DELETE');
+                break;
+            default:
+                break;
+        }
+        curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($curl, CURLOPT_HEADER, false);
 
-		foreach(self::$curlOptions as $option => $value) {
-			curl_setopt($curl, $option, $value);
-		}
+        curl_setopt($curl, CURLOPT_URL, $url);
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, false);
+        curl_setopt($curl, CURLOPT_WRITEFUNCTION, array(&$this, '__responseWriteCallback'));
+        curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
 
-		// Execute, grab errors
-		if (curl_exec($curl)) {
-			$this->response->code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-		} else {
-			$this->response->error = array(
-				'curl' => true,
-				'code' => curl_errno($curl),
-				'message' => curl_error($curl),
-				'resource' => $this->resource
-			);
-		}
+        foreach (self::$curlOptions as $option => $value) {
+            curl_setopt($curl, $option, $value);
+        }
 
-		if (!$this->ses->getCurl()) {
-			@curl_close($curl);
-		}
+        // Execute, grab errors
+        if (curl_exec($curl)) {
+            $this->response->code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        } else {
+            $this->response->error = array(
+                'curl' => true,
+                'code' => curl_errno($curl),
+                'message' => curl_error($curl),
+                'resource' => $this->resource
+            );
+        }
 
-		// Parse body into XML
-		if ($this->response->error === false && isset($this->response->body)) {
-			$this->response->body = simplexml_load_string($this->response->body);
+        if (!$this->ses->getCurl()) {
+            @curl_close($curl);
+        }
 
-			// Grab SES errors
-			if (!in_array($this->response->code, array(200, 201, 202, 204))
-				&& isset($this->response->body->Error)) {
-				$error = $this->response->body->Error;
-				$output = array();
-				$output['curl'] = false;
-				$output['Error'] = array();
-				$output['Error']['Type'] = (string)$error->Type;
-				$output['Error']['Code'] = (string)$error->Code;
-				$output['Error']['Message'] = (string)$error->Message;
-				$output['RequestId'] = (string)$this->response->body->RequestId;
+        // Parse body into XML
+        if ($this->response->error === false && isset($this->response->body)) {
+            $this->response->body = simplexml_load_string($this->response->body);
 
-				$this->response->error = $output;
-				unset($this->response->body);
-			}
-		}
+            // Grab SES errors
+            if (!in_array($this->response->code, array(200, 201, 202, 204))
+                && isset($this->response->body->Error)) {
+                $error = $this->response->body->Error;
+                $output = array();
+                $output['curl'] = false;
+                $output['Error'] = array();
+                $output['Error']['Type'] = (string)$error->Type;
+                $output['Error']['Code'] = (string)$error->Code;
+                $output['Error']['Message'] = (string)$error->Message;
+                $output['RequestId'] = (string)$this->response->body->RequestId;
 
-		return $this->response;
-	}
+                $this->response->error = $output;
+                unset($this->response->body);
+            }
+        }
 
-	/**
-	* CURL write callback
-	*
-	* @param resource &$curl CURL resource
-	* @param string &$data Data
-	* @return integer
-	*/
-	private function __responseWriteCallback(&$curl, &$data) {
-		$this->response->body .= $data;
-		return strlen($data);
-	}
+        return $this->response;
+    }
 
-	/**
-	* Contributed by afx114
-	* URL encode the parameters as per http://docs.amazonwebservices.com/AWSECommerceService/latest/DG/index.html?Query_QueryAuth.html
-	* PHP's rawurlencode() follows RFC 1738, not RFC 3986 as required by Amazon. The only difference is the tilde (~), so convert it back after rawurlencode
-	* See: http://www.morganney.com/blog/API/AWS-Product-Advertising-API-Requires-a-Signed-Request.php
-	*
-	* @param string $var String to encode
-	* @return string
-	*/
-	private function __customUrlEncode($var) {
-		return str_replace('%7E', '~', rawurlencode($var));
-	}
+    /**
+     * CURL write callback
+     *
+     * @param resource &$curl CURL resource
+     * @param string &$data Data
+     * @return integer
+     */
+    private function __responseWriteCallback(&$curl, &$data)
+    {
+        $this->response->body .= $data;
+        return strlen($data);
+    }
 
-	/**
-	* Generate the auth string using Hmac-SHA256
-	*
-	* @internal Used by SimpleDBRequest::getResponse()
-	* @param string $string String to sign
-	* @return string
-	*/
-	private function __getSignature($string) {
-		return base64_encode(hash_hmac('sha256', $string, $this->ses->getSecretKey(), true));
-	}
+    private function _generateSignature($date, $region, $awsSecret)
+    {
+        $dateHash = hash_hmac('sha256', $date, 'AWS4' . $awsSecret, true);
+        $regionHash = hash_hmac('sha256', $region, $dateHash, true);
+        $serviceHash = hash_hmac('sha256', self::SERVICE, $regionHash, true);
+        return hash_hmac('sha256', 'aws4_request', $serviceHash, true);
+    }
 }

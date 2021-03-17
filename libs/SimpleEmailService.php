@@ -60,6 +60,7 @@ class SimpleEmailService
 	public function getAccessKey() { return $this->__accessKey; }
 	public function getSecretKey() { return $this->__secretKey; }
 	public function getHost() { return $this->__host; }
+	public function getRegion() { return str_replace(['email.', '.amazonaws.com'], '', $this->__host); }
 
 	protected $__verifyHost = 1;
 	protected $__verifyPeer = 1;

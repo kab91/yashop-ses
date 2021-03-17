@@ -13,7 +13,7 @@ use yashop\ses\libs\SimpleEmailServiceMessage;
 class Message extends BaseMessage
 {
     /**
-     * @var \yashop\ses\libs\SimpleEmailServiceMessage Simple Email Service message instance.
+     * @var yashop\ses\libs\SimpleEmailServiceMessage Simple Email Service message instance.
      */
     private $_sesMessage;
 
@@ -69,7 +69,7 @@ class Message extends BaseMessage
 
     /**
      * In Yii2 dev panel some bug and this method have to return information about result of sending
-     * @return \yashop\ses\Message Message class instance.
+     * @return yashop\ses\Message Message class instance.
      */
     public function getSwiftMessage()
     {
@@ -77,7 +77,7 @@ class Message extends BaseMessage
     }
 
     /**
-     * @return \yashop\ses\libs\SimpleEmailServiceMessage Simple Email Service message instance.
+     * @return yashop\ses\libs\SimpleEmailServiceMessage Simple Email Service message instance.
      */
     public function getSesMessage()
     {

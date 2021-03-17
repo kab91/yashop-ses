@@ -1,6 +1,6 @@
 Amazon ses extension for Yii2
 =============================
-Extension for sending emails via amazon ses. Part of YaShop
+Extension for sending emails via amazon ses. Has support of AWS Signature Version 4.
 
 Installation
 ------------
@@ -10,13 +10,13 @@ The preferred way to install this extension is through [composer](http://getcomp
 Either run
 
 ```
-php composer.phar require --prefer-dist ofat/yii2-yashop-ses "*"
+php composer.phar require --prefer-dist kab91/yii2-yashop-ses "*"
 ```
 
 or add
 
 ```
-"ofat/yii2-yashop-ses": "*"
+"kab91/yii2-yashop-ses": "*"
 ```
 
 to the require section of your `composer.json` file.
