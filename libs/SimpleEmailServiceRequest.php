@@ -152,7 +152,7 @@ final class SimpleEmailServiceRequest
 
         curl_setopt($curl, CURLOPT_URL, $url);
         curl_setopt($curl, CURLOPT_RETURNTRANSFER, false);
-        curl_setopt($curl, CURLOPT_WRITEFUNCTION, array(&$this, '__responseWriteCallback'));
+        curl_setopt($curl, CURLOPT_WRITEFUNCTION, array($this, '__responseWriteCallback'));
         curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true);
 
         foreach (self::$curlOptions as $option => $value) {
@@ -202,11 +202,11 @@ final class SimpleEmailServiceRequest
     /**
      * CURL write callback
      *
-     * @param resource &$curl CURL resource
-     * @param string &$data Data
+     * @param resource $curl CURL resource
+     * @param string $data Data
      * @return integer
      */
-    private function __responseWriteCallback(&$curl, &$data)
+    private function __responseWriteCallback($curl, $data)
     {
         $this->response->body .= $data;
         return strlen($data);
